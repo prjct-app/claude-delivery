@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "prjct",
+  "description": "prjct extensions for Claude Code",
+  "owner": { "name": "prjct" },
+  "plugins": [
+    {
+      "name": "delivery",
+      "description": "Ticket acceptance criteria as a contract: the agent proves each AC, only the user approves, full checks run after approval, and the PR waits for both.",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}

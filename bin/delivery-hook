@@ -1,0 +1,19 @@
+#!/bin/sh
+# Fast path: with no open contract anywhere, tool hooks skip starting Node. SessionStart always runs
+# (it puts the CLI on PATH); prompts run when they start with a slash command.
+input=$(cat)
+case "$input" in
+  *'"hook_event_name":"SessionStart"'* | *'"prompt":"/'*) ;;
+  *)
+    registry="${XDG_STATE_HOME:-$HOME/.local/state}/claude-delivery/active"
+    [ -n "$(ls -A "$registry" 2>/dev/null)" ] || exit 0
+    # After a tool runs, only CLI calls and PR creation matter.
+    case "$input" in
+      *'"hook_event_name":"PostToolUse"'*)
+        case "$input" in *delivery* | *"pr create"* | *pull_request*) ;; *) exit 0 ;; esac ;;
+    esac
+    ;;
+esac
+# Cache the type-stripped modules: a hook runs on every tool call while a contract is open.
+export NODE_COMPILE_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/claude-delivery/node"
+printf '%s' "$input" | exec node "$(dirname "$(readlink -f "$0")")/../src/hooks.ts"

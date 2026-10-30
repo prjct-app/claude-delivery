@@ -1,0 +1,17 @@
+{
+  "name": "@prjct.app/claude-delivery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code plugin: ticket acceptance criteria as a contract, user-only approval, checks after approval, PR after checks.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "test": "export XDG_STATE_HOME=\"$(mktemp -d)\" && node --test --test-concurrency=1 tests/*.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "typescript": "^5.9.3"
+  }
+}
