@@ -13,6 +13,8 @@ import { git, type Repo } from "./git.ts";
 export const CHANGED_FILES_THRESHOLD = 3;
 
 const TICKET_REF = /\b[A-Z][A-Z0-9]{1,9}-\d+\b|\bCU-[a-z0-9]{5,}\b|https?:\/\/\S*(?:atlassian\.net\/browse|app\.clickup\.com\/t|linear\.app\/\S+\/issue|github\.com\/\S+\/issues)\/\S+/;
+/** A branch named as a feature is substantial work by declaration, however small the first edit. */
+const FEATURE_BRANCH = /^(?:feat|feature)s?\//;
 
 export interface Verdict {
   /** Hash of the user prompt the verdict answers; a new prompt is judged again. */
@@ -91,15 +93,19 @@ export function lastUserPrompts(transcriptPath: string | undefined, count = 3): 
   }
 }
 
-/** Paths changed in the working tree, with the one about to be edited. */
-function changedFiles(repo: Repo, path: string): string[] {
+/** Paths changed in the working tree, with the one about to be edited if any. */
+function changedFiles(repo: Repo, path: string | undefined): string[] {
   let lines: string[] = [];
   try {
     lines = git(repo.top, ["status", "--porcelain", "--untracked-files=normal"]).split("\n").filter(Boolean).map((line) => line.slice(3));
   } catch {}
+  if (!path) return lines;
   const target = relative(repo.top, path);
   return lines.includes(target) ? lines : [...lines, target];
 }
+
+/** What the agent is about to do without a contract: edit a file, or run a full check. */
+export type Work = { path: string } | { command: string };
 
 const JUDGE_PROMPT = `You decide whether a coding task must run under a delivery contract: acceptance criteria, the user's review and approval, full checks after approval, then the PR.
 Answer YES when the task is substantial or risky: it implements a ticket, issue or story; it has several material acceptance criteria; it is a feature or refactor across several files; or it touches data, auth, payments, migrations, public APIs or deployment.
@@ -128,9 +134,10 @@ function askJudge(input: string): { needed: boolean; reason: string } | undefine
 
 export type Gate = { needed: true; reason: string } | { needed: false } | { unjudged: true };
 
-/** Whether an edit without a contract has to wait for one. */
-export function judgeEdit(repo: Repo, path: string, sessionId: string | undefined, transcriptPath: string | undefined): Gate {
+/** Whether work without a contract has to wait for one. */
+export function judgeWork(repo: Repo, work: Work, sessionId: string | undefined, transcriptPath: string | undefined): Gate {
   if (!sessionId) return { needed: false };
+  const path = "path" in work ? work.path : undefined;
   const record = loadRecord(sessionId);
   if (record.skipped) return { needed: false };
 
@@ -141,7 +148,7 @@ export function judgeEdit(repo: Repo, path: string, sessionId: string | undefine
   if (previous?.prompt === key) return previous.needed ? { needed: true, reason: previous.reason } : { needed: false };
 
   const changed = changedFiles(repo, path);
-  const ticket = TICKET_REF.test(latest) || TICKET_REF.test(repo.branch);
+  const ticket = TICKET_REF.test(latest) || TICKET_REF.test(repo.branch) || FEATURE_BRANCH.test(repo.branch);
   if (!ticket && changed.length < CHANGED_FILES_THRESHOLD) return { needed: false };
   // A "no" stands for later prompts until a ticket shows up or the work grows by a few more files.
   if (previous && !previous.needed && !ticket && changed.length < previous.changed + CHANGED_FILES_THRESHOLD) {
@@ -156,7 +163,7 @@ export function judgeEdit(repo: Repo, path: string, sessionId: string | undefine
     "",
     `Branch: ${repo.branch}`,
     `Files changed so far (${changed.length}): ${changed.slice(0, 20).join(", ")}`,
-    `File about to be edited: ${relative(repo.top, path)}`,
+    path ? `File about to be edited: ${relative(repo.top, path)}` : `Command about to run: ${(work as { command: string }).command}`,
   ].join("\n"));
   if (!verdict) return { unjudged: true };
   saveRecord(sessionId, { ...record, verdict: { prompt: key, ...verdict, changed: changed.length, at: new Date().toISOString() } });

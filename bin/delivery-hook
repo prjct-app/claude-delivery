@@ -12,7 +12,13 @@ case "$input" in
     [ -n "$(ls -A "$registry" 2>/dev/null)" ] || {
       case "$input" in
         *'"hook_event_name":"PreToolUse"'*)
-          case "$input" in *'"tool_name":"Edit"'* | *'"tool_name":"Write"'* | *'"tool_name":"MultiEdit"'* | *'"tool_name":"NotebookEdit"'*) ;; *) exit 0 ;; esac ;;
+          case "$input" in
+            *'"tool_name":"Edit"'* | *'"tool_name":"Write"'* | *'"tool_name":"MultiEdit"'* | *'"tool_name":"NotebookEdit"'*) ;;
+            # A shell command that may be a full check is judged too; anything else skips Node.
+            *'"tool_name":"Bash"'*)
+              case "$input" in *tsc* | *pytest* | *vitest* | *jest* | *playwright* | *build* | *test* | *lint* | *typecheck* | *check* | *'run '*) ;; *) exit 0 ;; esac ;;
+            *) exit 0 ;;
+          esac ;;
         *) exit 0 ;;
       esac
     }
