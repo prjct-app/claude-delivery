@@ -13,6 +13,8 @@ import { git, type Repo } from "./git.ts";
 export const CHANGED_FILES_THRESHOLD = 3;
 
 const TICKET_REF = /\b[A-Z][A-Z0-9]{1,9}-\d+\b|\bCU-[a-z0-9]{5,}\b|https?:\/\/\S*(?:atlassian\.net\/browse|app\.clickup\.com\/t|linear\.app\/\S+\/issue|github\.com\/\S+\/issues)\/\S+/;
+/** A branch named as a feature is substantial work by declaration, however small the first edit. */
+const FEATURE_BRANCH = /^(?:feat|feature)s?\//;
 
 export interface Verdict {
   /** Hash of the user prompt the verdict answers; a new prompt is judged again. */
@@ -141,7 +143,7 @@ export function judgeEdit(repo: Repo, path: string, sessionId: string | undefine
   if (previous?.prompt === key) return previous.needed ? { needed: true, reason: previous.reason } : { needed: false };
 
   const changed = changedFiles(repo, path);
-  const ticket = TICKET_REF.test(latest) || TICKET_REF.test(repo.branch);
+  const ticket = TICKET_REF.test(latest) || TICKET_REF.test(repo.branch) || FEATURE_BRANCH.test(repo.branch);
   if (!ticket && changed.length < CHANGED_FILES_THRESHOLD) return { needed: false };
   // A "no" stands for later prompts until a ticket shows up or the work grows by a few more files.
   if (previous && !previous.needed && !ticket && changed.length < previous.changed + CHANGED_FILES_THRESHOLD) {

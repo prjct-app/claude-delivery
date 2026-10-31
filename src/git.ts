@@ -14,11 +14,15 @@ export interface Repo {
   branch: string;
 }
 
-/** The repository and branch at `cwd`, or undefined outside git or on a detached HEAD. */
+/**
+ * The repository and branch at `cwd`, or undefined outside git or on a detached HEAD. A branch with no
+ * commits yet (a freshly initialised repository) counts: the gate applies there too.
+ */
 export function repoAt(cwd: string): Repo | undefined {
   try {
-    const [top, commonDir, branch] = git(cwd, ["rev-parse", "--show-toplevel", "--git-common-dir", "--abbrev-ref", "HEAD"]).split("\n");
-    if (!top || !commonDir || !branch || branch === "HEAD") return undefined;
+    const [top, commonDir] = git(cwd, ["rev-parse", "--show-toplevel", "--git-common-dir"]).split("\n");
+    const branch = git(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    if (!top || !commonDir || !branch) return undefined;
     return { top, commonDir: isAbsolute(commonDir) ? commonDir : join(cwd, commonDir), branch };
   } catch {
     return undefined;

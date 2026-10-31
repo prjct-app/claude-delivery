@@ -71,7 +71,7 @@ test("a session in a repository without a contract is told once when to open one
 
 test("a small edit without a ticket never reaches the judge", () => {
   const calls = fakeJudge("YES: should not be asked");
-  const dir = scratchRepo();
+  const dir = scratchRepo("fix/typo");
   const s = session(dir, transcript("fix the typo in a.txt"));
   assert.equal(s.edit("a.txt"), undefined);
   assert.equal(calls(), 0);
@@ -100,9 +100,30 @@ test("a ticket in the branch name reaches the judge too", () => {
   assert.equal(calls(), 1);
 });
 
+test("a feature branch reaches the judge from the first edit, ticket or not", () => {
+  const calls = fakeJudge("YES: a feature branch");
+  const dir = scratchRepo("feat/export");
+  assert.ok(denied(session(dir, transcript("add the export button")).edit("a.txt")));
+  assert.equal(calls(), 1);
+  const other = scratchRepo("docs/readme");
+  assert.equal(session(other, transcript("add the export button")).edit("a.txt"), undefined);
+  assert.equal(calls(), 1);
+});
+
+test("a repository with no commits yet is judged, and start asks for the first commit", () => {
+  const calls = fakeJudge("YES: implements a ticket");
+  const dir = mkdtempSync(join(tmpdir(), "delivery-fresh-"));
+  execFileSync("git", ["init", "-q", "-b", "main"], { cwd: dir });
+  assert.ok(denied(session(dir, transcript("implement CU-86b2xyz")).edit("a.txt")));
+  assert.equal(calls(), 1);
+  const start = spawnSync(join(ROOT, "bin/delivery"), ["start", "--ticket", "CU-86b2xyz", "--ac", "x"], { cwd: dir, encoding: "utf8" });
+  assert.equal(start.status, 2);
+  assert.match(start.stderr, /no commits yet/);
+});
+
 test("a NO stands for later prompts until the work grows by a few files", () => {
   const calls = fakeJudge("NO: small refactor");
-  const dir = scratchRepo();
+  const dir = scratchRepo("chore/tidy");
   writeFileSync(join(dir, "b.txt"), "b\n");
   writeFileSync(join(dir, "c.txt"), "c\n");
   const path = transcript("tidy these files");
