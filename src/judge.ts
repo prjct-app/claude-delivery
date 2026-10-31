@@ -124,7 +124,7 @@ Reply with exactly one line: "YES: <reason>" or "NO: <reason>", the reason under
 function askJudge(input: string): { needed: boolean; reason: string } | undefined {
   const bin = process.env.CLAUDE_DELIVERY_JUDGE_BIN || "claude";
   const result = spawnSync(bin, [
-    "-p", "--model", process.env.CLAUDE_DELIVERY_JUDGE_MODEL || "haiku",
+    "-p", "--model", process.env.CLAUDE_DELIVERY_JUDGE_MODEL || "claude-haiku-5-5",
     "--tools", "", "--strict-mcp-config", "--no-session-persistence",
     "--settings", JSON.stringify({ disableAllHooks: true }),
   ], {

@@ -59,7 +59,7 @@ The agent decides, as in pi-delivery: at session start in a git repository witho
 When it does not, the first edit is the backstop:
 
 1. A filter without a model call: a ticket reference in your last message or the branch name, a `feat/`/`feature/` branch, or at least 3 changed files counting the one being edited. Below that, the edit goes through.
-2. Only then, a small model (`claude -p --model haiku`, no tools, no hooks; ~3 s) reads your last messages and the changed files and answers whether the work needs a contract. If it does, the edit is denied until one is open.
+2. Only then, a small model (`claude -p --model claude-haiku-5-5`, no tools, no hooks; ~3 s) reads your last messages and the changed files and answers whether the work needs a contract. If it does, the edit is denied until one is open.
 
 A full check run from the shell without a contract (`pnpm run test`, `tsc --noEmit`, `next build`…) goes through the same filter and judge, since those checks are what a contract defers until approval; targeted runs are not touched. The verdict is kept per message of yours, so later edits cost a file read; a "no" also stands for later messages until a ticket shows up or a few more files change. If the judge cannot answer (no `claude`, timeout), the edit goes through with the reminder. `CLAUDE_DELIVERY_JUDGE_MODEL` changes the model.
 
