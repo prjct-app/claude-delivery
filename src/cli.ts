@@ -61,13 +61,17 @@ function start(args: string[]): string {
   if (repo.branch === defaultBranch(repo.top)) {
     throw new Error(`You are on ${repo.branch}. Create a branch for the ticket first; the contract belongs to that branch.`);
   }
+  const baseCommit = headCommit(repo.top);
+  if (!baseCommit) {
+    throw new Error(`${repo.branch} has no commits yet. Make the initial commit (ask the user if it is theirs to make), then create a branch for the ticket.`);
+  }
   const contract = createStoredContract(repo, createContract({
     ticket: values.ticket ?? "",
     title: values.title ?? "",
     url: values.url,
     source: values.source,
     branch: repo.branch,
-    baseCommit: headCommit(repo.top),
+    baseCommit,
     tree: treeOf(repo.top),
     criteria: values.ac ?? [],
   }));
