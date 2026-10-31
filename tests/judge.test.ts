@@ -2,7 +2,7 @@
 // `claude -p` that counts its calls) and the user's waiver.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -56,6 +56,7 @@ function session(dir: string, path: string) {
   const id = `judge-${process.pid}-${++sessions}`;
   return {
     edit: (file: string) => hook(dir, { hook_event_name: "PreToolUse", session_id: id, transcript_path: path, tool_name: "Edit", tool_input: { file_path: join(dir, file) } }),
+    bash: (command: string) => hook(dir, { hook_event_name: "PreToolUse", session_id: id, transcript_path: path, tool_name: "Bash", tool_input: { command } }),
     prompt: (text: string) => hook(dir, { hook_event_name: "UserPromptSubmit", session_id: id, transcript_path: path, prompt: text }),
   };
 }
@@ -110,6 +111,29 @@ test("a feature branch reaches the judge from the first edit, ticket or not", ()
   assert.equal(calls(), 1);
 });
 
+const withChecks = (dir: string) => writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { test: "node -e 0", build: "node -e 0" } }));
+
+test("a full check without a contract is judged like an edit; targeted runs and other commands are not", () => {
+  const calls = fakeJudge("YES: a feature branch");
+  const dir = scratchRepo("feat/export");
+  withChecks(dir);
+  const s = session(dir, transcript("add the export"));
+  const first = s.bash("npm run test");
+  assert.ok(denied(first));
+  assert.match(first.hookSpecificOutput.permissionDecisionReason, /delivery contract[\s\S]*full check `npm run test`[\s\S]*Targeted runs/);
+  mkdirSync(join(dir, "sub"));
+  assert.ok(denied(s.bash("cd sub && npm run build")));
+  assert.ok(denied(s.edit("a.txt"))); // the verdict is shared with edits of the same prompt
+  assert.equal(calls(), 1);
+  assert.equal(s.bash("npm test -- a.test.js"), undefined);
+  assert.equal(s.bash("git status"), undefined);
+
+  const small = scratchRepo("fix/typo");
+  withChecks(small);
+  assert.equal(session(small, transcript("fix the typo")).bash("npm run test"), undefined);
+  assert.equal(calls(), 1);
+});
+
 test("a repository with no commits yet is judged, and start asks for the first commit", () => {
   const calls = fakeJudge("YES: implements a ticket");
   const dir = mkdtempSync(join(tmpdir(), "delivery-fresh-"));
@@ -156,10 +180,13 @@ test("a judge that cannot answer lets the edit through with the reminder", () =>
 test("only the user waives the gate, with /delivery-skip", () => {
   const calls = fakeJudge("YES: implements a ticket");
   const dir = scratchRepo();
+  withChecks(dir);
   const s = session(dir, transcript("implement CU-86b2xyz"));
   assert.ok(denied(s.edit("a.txt")));
+  assert.ok(denied(s.bash("npm run test")));
   assert.match(s.prompt("/delivery-skip").hookSpecificOutput.additionalContext, /waived/);
   assert.equal(s.edit("a.txt"), undefined);
+  assert.equal(s.bash("npm run test"), undefined);
   assert.equal(calls(), 1);
 
   const tool = (name: string, input: Record<string, unknown>) => hook(dir, { hook_event_name: "PreToolUse", tool_name: name, tool_input: input });

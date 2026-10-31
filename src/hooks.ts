@@ -6,7 +6,7 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG_PATH, loadConfig } from "./config.ts";
 import { changedPaths, commonDirAt, headTree, repoAt, summarizePaths, treeOf, worktreeOf, type Repo } from "./git.ts";
-import { judgeEdit, skipSession } from "./judge.ts";
+import { judgeWork, skipSession, type Work } from "./judge.ts";
 import { checkKeys, fullCheckOf, located, publishAction, publishOf, segments, touchesStore, USER_COMMAND, USER_COMMAND_ANYWHERE, writesFile } from "./shell.ts";
 import { archiveContract, loadContract, openContracts, pruneRegistry, updateContract } from "./store.ts";
 import {
@@ -289,7 +289,11 @@ function preBash(input: HookInput, command: string): HookOutput {
     const action = publishOf(tokens);
     const found = repos.has(dir) ? repos.get(dir) : active(dir) ?? (action ? publishTarget(input, dir, tokens) : undefined);
     repos.set(dir, found);
-    if (!found) continue;
+    if (!found) {
+      const blocker = action ? undefined : gateCheckWithoutContract(input, dir, tokens);
+      if (blocker) return blocker;
+      continue;
+    }
     if (writesFile(command, CONFIG_PATH)) return deny(`${CONFIG_PATH} defines the checks; only the user changes it.`);
     if (action === "pr-merge") return deny("merging is the user's call.");
     const config = action ? undefined : loadConfig(found.repo.top);
@@ -320,20 +324,34 @@ function prContract(input: HookInput, args: Record<string, unknown>): Found | un
   return (byBranch && locate(byBranch)) ?? sessionContract(input);
 }
 
-/** An edit in a repository without a contract: substantial or risky work waits for one. */
-function gateWithoutContract(input: HookInput, path: string): HookOutput {
-  const repo = repoAt(existsSync(dirname(path)) ? dirname(path) : input.cwd);
-  if (!repo) return undefined;
+/** Work in a repository without a contract: substantial or risky work waits for one. */
+function gateWithoutContract(input: HookInput, repo: Repo, work: Work, consequence: string): HookOutput {
   // A session working a contract from another worktree (T3) is covered by it.
   if (input.session_id && openContracts().some((o) => o.contract.sessions?.includes(input.session_id!))) return undefined;
-  const gate = judgeEdit(repo, path, input.session_id, input.transcript_path);
+  const gate = judgeWork(repo, work, input.session_id, input.transcript_path);
   if ("unjudged" in gate) return { hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: WHEN_TO_DELIVER } };
   if (!gate.needed) return undefined;
   return deny([
-    `this task needs a delivery contract (${gate.reason}). Load the delivery skill and open one before editing:`,
+    `this task needs a delivery contract (${gate.reason})${consequence}. Load the delivery skill and open one first:`,
     "`delivery start --ticket <id> --title … --ac …`, with the ticket's ACs, or, without a ticket, `--ticket ADHOC-<slug> --source request` and the outcomes the user asked for.",
     "If you think it does not need one, say so and ask the user; only they can waive it (/delivery-skip).",
   ].join(" "));
+}
+
+function gateEditWithoutContract(input: HookInput, path: string): HookOutput {
+  const repo = repoAt(existsSync(dirname(path)) ? dirname(path) : input.cwd);
+  return repo ? gateWithoutContract(input, repo, { path }, " before editing") : undefined;
+}
+
+/** A full check without a contract is judged like an edit: it is what a contract defers until approval. */
+function gateCheckWithoutContract(input: HookInput, dir: string, tokens: string[]): HookOutput {
+  const repo = existsSync(dir) ? repoAt(dir) : undefined;
+  if (!repo) return undefined;
+  const config = loadConfig(repo.top);
+  const fullCheck = fullCheckOf(tokens, checkKeys(config.checks, config.scripts));
+  if (!fullCheck) return undefined;
+  const command = tokens.join(" ");
+  return gateWithoutContract(input, repo, { command }, `; \`${command}\` runs the full check \`${fullCheck}\`, which then runs through \`delivery check\` after the user's approval. Targeted runs (naming a test file or path) are allowed now`);
 }
 
 function preToolUse(input: HookInput): HookOutput {
@@ -351,7 +369,7 @@ function preToolUse(input: HookInput): HookOutput {
     if (touchesStore(path)) return deny("the contract is changed only through the `delivery` CLI.");
     const found = active(dirname(path)) ?? active(input.cwd);
     if (found && relative(found.repo.top, path) === CONFIG_PATH) return deny(`${CONFIG_PATH} defines the checks; only the user changes it.`);
-    return found ? undefined : gateWithoutContract(input, path);
+    return found ? undefined : gateEditWithoutContract(input, path);
   }
 
   if (tool.startsWith("mcp__")) {
