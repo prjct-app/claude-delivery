@@ -1,6 +1,6 @@
 ---
 name: delivery
-description: Work a ticket with acceptance criteria (ClickUp, Jira, Linear, GitHub issue, Markdown or pasted) under a delivery contract. Use when the user hands over a ticket, issue or story to implement, or when a Delivery contract is active on the branch.
+description: Work substantial or risky changes under a delivery contract (acceptance criteria, user-only approval, checks after approval, then the PR). Use before editing when the user hands over a ticket, issue or story (ClickUp, Jira, Linear, GitHub, Markdown or pasted), when the work has several material acceptance criteria, is a multi-file feature or refactor, or touches data, auth, payments, migrations or public APIs; also when a Delivery contract is active on the branch or the delivery gate asks for one. Not for questions, diagnostics or small low-risk edits.
 ---
 
 # Delivery contract
@@ -11,8 +11,11 @@ The CLI is `delivery`; if it is not on PATH, use `${CLAUDE_PLUGIN_ROOT}/bin/deli
 
 ## Start
 1. Read the ticket with whatever connector holds it. Copy its acceptance criteria verbatim, one `--ac` each. If it has none, ask the user for them instead of inventing them.
+   Without a ticket (substantial work the user asked for directly): `--ticket ADHOC-<slug> --source request`, one `--ac` per outcome the user asked for, in their words. Do not add outcomes they did not ask for.
 2. Create a branch for the ticket if you are on the default branch.
 3. `delivery start --ticket <id> --title "<title>" --url <url> --source <tool> --ac "<AC 1>" --ac "<AC 2>"`
+
+Without a contract, the first edit of a substantial or risky task is denied by the delivery gate. Open the contract then; if you think the task does not need one, say so and ask the user. Only they can waive it (`/delivery-skip`), and you never send that command.
 
 ## Implement
 - Work until every AC is met. For each one: `delivery evidence AC<n> "<where it lives and what you observed when you exercised it>"`. Evidence states what you saw, not what you expect.

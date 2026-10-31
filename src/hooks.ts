@@ -6,6 +6,7 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG_PATH, loadConfig } from "./config.ts";
 import { changedPaths, commonDirAt, headTree, repoAt, summarizePaths, treeOf, worktreeOf, type Repo } from "./git.ts";
+import { judgeEdit, skipSession } from "./judge.ts";
 import { checkKeys, fullCheckOf, located, publishAction, publishOf, segments, touchesStore, USER_COMMAND, USER_COMMAND_ANYWHERE, writesFile } from "./shell.ts";
 import { archiveContract, loadContract, openContracts, pruneRegistry, updateContract } from "./store.ts";
 import {
@@ -23,6 +24,7 @@ import {
 interface HookInput {
   hook_event_name: string;
   session_id?: string;
+  transcript_path?: string;
   cwd: string;
   prompt?: string;
   tool_name?: string;
@@ -124,24 +126,32 @@ function settleMerged({ repo, contract }: Found): Contract {
   }
 }
 
+/** Shown once per session in a repository without a contract: the agent decides, as in pi-delivery. */
+const WHEN_TO_DELIVER = "Delivery: before substantial or risky work in this repository (a ticket, several material acceptance criteria, a multi-file feature or refactor, data/auth/payments/migrations), open a delivery contract with the delivery skill. Skip it for questions, diagnostics and small low-risk edits.";
+
 function sessionStart(input: HookInput): HookOutput {
   const envFile = process.env.CLAUDE_ENV_FILE;
   if (envFile) appendFileSync(envFile, `export PATH="${BIN}:$PATH"\n`);
   pruneRegistry();
   const found = sessionContract(input, false);
-  if (!found) return undefined;
+  if (!found) return existsSync(input.cwd) && repoAt(input.cwd) ? context("SessionStart", WHEN_TO_DELIVER) : undefined;
   const contract = settleMerged(found);
   const phase = contract.pr?.merged ? "merged" : phaseOf(contract, treeOf(found.repo.top));
   const where = found.repo.top === repoAt(input.cwd)?.top ? "" : `\nThe branch is checked out at ${found.repo.top}; run git and \`delivery\` there.`;
   return context("SessionStart", `${formatContract(contract, phase)}${where}\n(CLI: \`delivery\`, also at ${BIN}/delivery. The delivery skill explains the workflow.)`);
 }
 
-const PROMPT_COMMAND = /^\/(?:delivery:)?(approve|changes|delivery-reset|delivery-status)(?:\s+([\s\S]*))?$/;
+const PROMPT_COMMAND = /^\/(?:delivery:)?(approve|changes|delivery-reset|delivery-status|delivery-skip)(?:\s+([\s\S]*))?$/;
 
 function userPrompt(input: HookInput): HookOutput {
   const match = (input.prompt?.trim() ?? "").match(PROMPT_COMMAND);
   if (!match) return undefined;
   const [, command, given = ""] = match;
+  if (command === "delivery-skip") {
+    if (!input.session_id) return answerUser("Delivery: this session has no id, so it cannot be waived.");
+    skipSession(input.session_id);
+    return context("UserPromptSubmit", "Delivery: the user waived the delivery contract for this session. Continue without one.");
+  }
   // `/approve SHIELD-2399 …` names the contract explicitly.
   const open = openContracts();
   const word = given.trim().split(/\s+/)[0]?.toLowerCase();
@@ -310,6 +320,22 @@ function prContract(input: HookInput, args: Record<string, unknown>): Found | un
   return (byBranch && locate(byBranch)) ?? sessionContract(input);
 }
 
+/** An edit in a repository without a contract: substantial or risky work waits for one. */
+function gateWithoutContract(input: HookInput, path: string): HookOutput {
+  const repo = repoAt(existsSync(dirname(path)) ? dirname(path) : input.cwd);
+  if (!repo) return undefined;
+  // A session working a contract from another worktree (T3) is covered by it.
+  if (input.session_id && openContracts().some((o) => o.contract.sessions?.includes(input.session_id!))) return undefined;
+  const gate = judgeEdit(repo, path, input.session_id, input.transcript_path);
+  if ("unjudged" in gate) return { hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: WHEN_TO_DELIVER } };
+  if (!gate.needed) return undefined;
+  return deny([
+    `this task needs a delivery contract (${gate.reason}). Load the delivery skill and open one before editing:`,
+    "`delivery start --ticket <id> --title … --ac …`, with the ticket's ACs, or, without a ticket, `--ticket ADHOC-<slug> --source request` and the outcomes the user asked for.",
+    "If you think it does not need one, say so and ask the user; only they can waive it (/delivery-skip).",
+  ].join(" "));
+}
+
 function preToolUse(input: HookInput): HookOutput {
   const tool = input.tool_name ?? "";
   const args = input.tool_input ?? {};
@@ -325,7 +351,7 @@ function preToolUse(input: HookInput): HookOutput {
     if (touchesStore(path)) return deny("the contract is changed only through the `delivery` CLI.");
     const found = active(dirname(path)) ?? active(input.cwd);
     if (found && relative(found.repo.top, path) === CONFIG_PATH) return deny(`${CONFIG_PATH} defines the checks; only the user changes it.`);
-    return undefined;
+    return found ? undefined : gateWithoutContract(input, path);
   }
 
   if (tool.startsWith("mcp__")) {
