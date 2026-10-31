@@ -161,6 +161,11 @@ function userPrompt(input: HookInput): HookOutput {
   if (matches.length > 1 && !named) {
     return answerUser(`Several open contracts are named ${matches[0].contract.ticket}; run this from a session in the right repository.\n${listOpen(matches)}`);
   }
+  // Reset and status take nothing but a ticket, so a name that matches no open contract is a miss, never
+  // a fallback to whatever contract this session happens to work.
+  if (word && !named && (command === "delivery-reset" || command === "delivery-status")) {
+    return answerUser(`No open contract is named ${given.trim().split(/\s+/)[0]}.\n${listOpen(open)}`);
+  }
   const rest = named ? given.trim().slice(named.contract.ticket.length).trim() : given;
   const found = named ? locate(named) : sessionContract(input);
   if (!found) {

@@ -309,3 +309,15 @@ test("T3: publishing the contract's branch from a detached worktree is gated", (
   assert.equal(tool(nowhere, "mcp__github__create_pull_request", { owner: "o", repo: "r", head: "other", base: "main" }), undefined);
   assert.equal(bash(worktree, "git push origin some-other-branch"), undefined);
 });
+
+test("/delivery-reset and /delivery-status naming an unknown ticket never fall back to the session's contract", () => {
+  const dir = scratchRepo();
+  assert.equal(cli(dir, "start", "--ticket", "KEEP-1", "--title", "Keep", "--ac", "stays").code, 0);
+  const reset = prompt(dir, "/delivery-reset GONE-2");
+  assert.match(reset.reason, /No open contract is named GONE-2[\s\S]*KEEP-1 · feat\/export/);
+  assert.match(prompt(dir, "/delivery:delivery-status gone-2").reason, /No open contract is named gone-2/);
+  assert.match(cli(dir, "status").out, /KEEP-1 — Keep[\s\S]*Phase: implementing/);
+  // Without a name, the session's contract is still the target.
+  assert.match(prompt(dir, "/delivery-status").reason, /KEEP-1 — Keep/);
+  assert.match(prompt(dir, "/delivery-reset").reason, /KEEP-1 \(feat\/export\) archived/);
+});
