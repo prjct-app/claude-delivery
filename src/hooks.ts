@@ -6,7 +6,7 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG_PATH, loadConfig } from "./config.ts";
 import { changedPaths, commonDirAt, headTree, repoAt, summarizePaths, treeOf, worktreeOf, type Repo } from "./git.ts";
-import { judgeWork, skipSession, type Work } from "./judge.ts";
+import { judgeWork, skipSession, userAskedMerge, type Work } from "./judge.ts";
 import { checkKeys, fullCheckOf, located, publishAction, publishOf, segments, touchesStore, USER_COMMAND, USER_COMMAND_ANYWHERE, writesFile } from "./shell.ts";
 import { archiveContract, loadContract, openContracts, pruneRegistry, updateContract } from "./store.ts";
 import {
@@ -300,7 +300,10 @@ function preBash(input: HookInput, command: string): HookOutput {
       continue;
     }
     if (writesFile(command, CONFIG_PATH)) return deny(`${CONFIG_PATH} defines the checks; only the user changes it.`);
-    if (action === "pr-merge") return deny("merging is the user's call.");
+    if (action === "pr-merge") {
+      if (userAskedMerge(input.transcript_path)) continue;
+      return deny("merging is the user's call: merge only when they ask for it.");
+    }
     const config = action ? undefined : loadConfig(found.repo.top);
     const fullCheck = config && fullCheckOf(tokens, checkKeys(config.checks, config.scripts));
     if (!action && !fullCheck) continue;
@@ -381,7 +384,7 @@ function preToolUse(input: HookInput): HookOutput {
     if (!/(create|merge)_pull_request/i.test(tool)) return undefined;
     const found = prContract(input, args);
     if (!found) return undefined;
-    if (/merge_pull_request/i.test(tool)) return deny("merging is the user's call.");
+    if (/merge_pull_request/i.test(tool)) return userAskedMerge(input.transcript_path) ? undefined : deny("merging is the user's call: merge only when they ask for it.");
     const { tree, phase, stale } = gateFor(found, new Map());
     return phase === "ready" || phase === "pr-open" ? publishBlocker(found, tree) : deny(`no PR before the user's approval and passing checks.${stale} ${nextStep(phase)}`);
   }

@@ -61,6 +61,14 @@ export function skipSession(sessionId: string): void {
   saveRecord(sessionId, { ...loadRecord(sessionId), skipped: new Date().toISOString() });
 }
 
+/** "merge", "mergea", "mergear", "haz merge", "fusiona", "fusionar", "merge it", "merge the PR"... in any case. */
+const ASKS_MERGE = /\b(merge[a-z]*|fusion[a-z]*)\b/i;
+
+/** True when one of the user's last messages asks for a merge: typed or dictated, in English or Spanish. */
+export function userAskedMerge(transcriptPath: string | undefined): boolean {
+  return lastUserPrompts(transcriptPath).some((text) => ASKS_MERGE.test(text));
+}
+
 function textOf(content: unknown): string | undefined {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return undefined;

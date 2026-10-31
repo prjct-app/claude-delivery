@@ -101,6 +101,20 @@ test("ticket → evidence → review → user approval → checks → PR", () =>
   assert.match(blocked.hookSpecificOutput.permissionDecisionReason, /approval is stale: b.txt/);
 });
 
+test("a merge goes through only when the user asked for it", () => {
+  const dir = scratchRepo();
+  cli(dir, "start", "--ticket", "CU-3", "--ac", "Works");
+  const transcript = join(dir, "transcript.jsonl");
+  const line = (role: string, text: string) => JSON.stringify({ type: role, message: { role, content: text } });
+  const merge = () => hook(dir, { hook_event_name: "PreToolUse", transcript_path: transcript, tool_name: "Bash", tool_input: { command: "gh pr merge 5 --squash" } });
+  writeFileSync(transcript, [line("user", "arregla el login"), line("assistant", "I will merge the PR now")].join("\n") + "\n");
+  assert.ok(denied(merge()), "the agent deciding to merge is not the user asking");
+  writeFileSync(transcript, [line("user", "arregla el login"), line("user", "ya, hazle merge al PR")].join("\n") + "\n");
+  assert.equal(merge(), undefined, "a dictated or typed request to merge lets it through");
+  writeFileSync(transcript, [line("user", "merge it"), line("user", "a"), line("user", "b"), line("user", "c"), line("user", "d")].join("\n") + "\n");
+  assert.ok(denied(merge()), "an old request does not carry forever");
+});
+
 test("/changes sends the work back; /delivery-reset is the user's", () => {
   const dir = scratchRepo();
   cli(dir, "start", "--ticket", "CU-2", "--ac", "Works");
