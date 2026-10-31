@@ -226,7 +226,7 @@ export function publishAction(command: string): PublishAction | undefined {
 
 /** The contract store is the user's record; the agent goes through the CLI. */
 export function touchesStore(text: string): boolean {
-  return /\.git\/(?:[^\s/]+\/)*delivery\b|claude-delivery\/active/.test(text);
+  return /\.git\/(?:[^\s/]+\/)*delivery\b|claude-delivery\/(?:active|judged)/.test(text);
 }
 
 const WRITES = /(^|[^<>&0-9])>{1,2}(?!&)|\b(tee|mv|cp|rm|truncate|install|ln)\b|\bsed\b[^\n]*\s-i|\bperl\b[^\n]*\s-p?i|\bjq\b[^\n]*>/;
@@ -236,6 +236,6 @@ export function writesFile(command: string, path: string): boolean {
 }
 
 /** A prompt that the prompt hook would take as the user's verdict: it starts with the command. */
-export const USER_COMMAND = /^\s*\/(?:delivery:)?(?:approve|changes|delivery-reset)(?=$|\s)/;
+export const USER_COMMAND = /^\s*\/(?:delivery:)?(?:approve|changes|delivery-reset|delivery-skip)(?=$|\s)/;
 /** The same commands anywhere in a shell line, e.g. `echo /approve | claude -p`. */
-export const USER_COMMAND_ANYWHERE = /(?:^|[\s"'`(])\/(?:delivery:)?(?:approve|changes|delivery-reset)(?=$|[\s"'`)])/m;
+export const USER_COMMAND_ANYWHERE = /(?:^|[\s"'`(])\/(?:delivery:)?(?:approve|changes|delivery-reset|delivery-skip)(?=$|[\s"'`)])/m;

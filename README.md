@@ -28,7 +28,7 @@ Requires Node.js 22.18+ (TypeScript runs natively), git, and `gh` for PR merge d
 
 ## Use
 
-`/delivery CU-123` (or just hand the agent a ticket). The skill has the agent copy the ticket's ACs verbatim:
+`/delivery CU-123` (or just hand the agent a ticket). You do not have to invoke it: substantial or risky work opens a contract on its own (see [Without a contract](#without-a-contract)). The skill has the agent copy the ticket's ACs verbatim:
 
 ```sh
 delivery start --ticket CU-123 --title "CSV export" --url … --source jira --ac "…" --ac "…"
@@ -46,10 +46,22 @@ You answer:
 | `/changes <reason>` | Back to implementation; withdraws any earlier approval. |
 | `/delivery-status` | Shows the contract (answered locally, no model call). |
 | `/delivery-reset` | Archives the contract (answered locally). |
+| `/delivery-skip` | Waives the contract for the rest of this session, when the gate below judged wrongly. |
 
 Each command also takes the ticket first (`/approve SHIELD-2399 looks good`) to name the contract explicitly.
 
 Then the agent runs `delivery check`, commits, and only then can it push and open the PR.
+
+## Without a contract
+
+The agent decides, as in pi-delivery: at session start in a git repository without a contract it is told, once, to open one before substantial or risky work (a ticket, several material ACs, a multi-file feature or refactor, data/auth/payments/migrations) and to skip it for questions, diagnostics and small edits. Without a ticket, the contract is `ADHOC-<slug>` with the outcomes you asked for as its ACs.
+
+When it does not, the first edit is the backstop:
+
+1. A filter without a model call: a ticket reference in your last message or the branch name, or at least 3 changed files counting the one being edited. Below that, the edit goes through.
+2. Only then, a small model (`claude -p --model haiku`, no tools, no hooks; ~3 s) reads your last messages and the changed files and answers whether the work needs a contract. If it does, the edit is denied until one is open.
+
+The verdict is kept per message of yours, so later edits cost a file read; a "no" also stands for later messages until a ticket shows up or a few more files change. If the judge cannot answer (no `claude`, timeout), the edit goes through with the reminder. `CLAUDE_DELIVERY_JUDGE_MODEL` changes the model.
 
 ## Checks
 
@@ -63,7 +75,7 @@ An empty list means the repository has no checks. Without the file, one script p
 
 ## Cost to the agent
 
-No tools are added; the slash commands are hidden from the model. The skill loads on demand. An open contract adds ~10 lines of context at session start, and the stop hook nudges at most once per tree state. Hooks cost ~4 ms per tool call when no contract is open anywhere, ~30 ms while one is.
+No tools are added; the slash commands are hidden from the model. The skill loads on demand. A repository without a contract adds one line of context at session start; an open contract, ~10 lines. The stop hook nudges at most once per tree state. Hooks cost ~4 ms per tool call when no contract is open anywhere (~30 ms for file edits, which are checked against the gate), ~30 ms while one is. The judge runs at most once per message of yours, and only past the filter.
 
 ## Limits
 

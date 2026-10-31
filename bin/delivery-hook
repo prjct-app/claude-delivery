@@ -1,12 +1,21 @@
 #!/bin/sh
+# The judge model's own session (see src/judge.ts) runs no delivery hooks.
+[ -n "$CLAUDE_DELIVERY_JUDGE" ] && exit 0
 # Fast path: with no open contract anywhere, tool hooks skip starting Node. SessionStart always runs
-# (it puts the CLI on PATH); prompts run when they start with a slash command.
+# (it puts the CLI on PATH); prompts run when they start with a slash command; file edits run so work
+# started without a contract can be judged.
 input=$(cat)
 case "$input" in
   *'"hook_event_name":"SessionStart"'* | *'"prompt":"/'*) ;;
   *)
     registry="${XDG_STATE_HOME:-$HOME/.local/state}/claude-delivery/active"
-    [ -n "$(ls -A "$registry" 2>/dev/null)" ] || exit 0
+    [ -n "$(ls -A "$registry" 2>/dev/null)" ] || {
+      case "$input" in
+        *'"hook_event_name":"PreToolUse"'*)
+          case "$input" in *'"tool_name":"Edit"'* | *'"tool_name":"Write"'* | *'"tool_name":"MultiEdit"'* | *'"tool_name":"NotebookEdit"'*) ;; *) exit 0 ;; esac ;;
+        *) exit 0 ;;
+      esac
+    }
     # After a tool runs, only CLI calls and PR creation matter.
     case "$input" in
       *'"hook_event_name":"PostToolUse"'*)
