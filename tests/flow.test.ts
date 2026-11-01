@@ -1,7 +1,7 @@
 // End to end in a scratch repository: the CLI as the agent runs it, hooks as Claude Code calls them.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -9,7 +9,8 @@ import test from "node:test";
 const ROOT = resolve(import.meta.dirname, "..");
 
 function scratchRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "delivery-flow-"));
+  // Real path: on macOS tmpdir() is under /var, a link to /private/var, and git reports the latter.
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "delivery-flow-")));
   const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "ignore" });
   git("init", "-q", "-b", "main");
   git("config", "user.email", "t@example.com");

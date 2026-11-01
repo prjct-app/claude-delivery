@@ -1,7 +1,7 @@
 {
   "name": "delivery",
   "description": "Ticket acceptance criteria as a contract: the agent proves each AC, only the user approves, full checks run after approval, and the PR waits for both.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": { "name": "prjct" },
   "license": "MIT"
 }

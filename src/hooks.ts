@@ -1,8 +1,8 @@
 // Claude Code hooks. Each handler does nothing unless a contract applies, and fails open except
 // where opening would publish work: a push or PR that cannot be verified is denied.
 import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { appendFileSync, existsSync, readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG_PATH, loadConfig } from "./config.ts";
 import { changedPaths, commonDirAt, headTree, repoAt, summarizePaths, treeOf, worktreeOf, type Repo } from "./git.ts";
@@ -227,6 +227,20 @@ function stringsIn(value: unknown, out: string[] = []): string[] {
 const SETTINGS_FILE = /(^|\/)\.claude\/settings(\.local)?\.json$/;
 const DISABLES_GATE = /disableAllHooks|"delivery@prjct"\s*:\s*false/;
 
+/**
+ * Where a path lands once symbolic links are followed (macOS's /var is /private/var), so a guard
+ * comparing it with the repository's top cannot be dodged by another spelling. A file not there yet
+ * resolves through its nearest existing folder.
+ */
+function realPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    const parent = dirname(path);
+    return parent === path ? path : join(realPath(parent), basename(path));
+  }
+}
+
 /** Edits to Claude settings that would switch the gate off. Other settings edits are fine. */
 function disablesGate(path: string, args: Record<string, unknown>): boolean {
   if (!SETTINGS_FILE.test(path)) return false;
@@ -372,7 +386,7 @@ function preToolUse(input: HookInput): HookOutput {
   }
 
   if (FILE_TOOLS.has(tool)) {
-    const path = resolve(input.cwd, String(args.file_path ?? args.notebook_path ?? ""));
+    const path = realPath(resolve(input.cwd, String(args.file_path ?? args.notebook_path ?? "")));
     if (disablesGate(path, args)) return deny("switching off hooks or this plugin while a delivery contract is open is the user's call.");
     if (touchesStore(path)) return deny("the contract is changed only through the `delivery` CLI.");
     const found = active(dirname(path)) ?? active(input.cwd);
