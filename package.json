@@ -1,6 +1,6 @@
 {
   "name": "@prjct.app/claude-delivery",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Claude Code plugin: ticket acceptance criteria as a contract, user-only approval, checks after approval, PR after checks.",
   "type": "module",
